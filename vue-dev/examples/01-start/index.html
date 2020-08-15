@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <!-- 1. 完整版包含编辑器  -->
+    <!-- <script src="../../dist/vue.js"></script> -->
+    <!-- 2. 运行版不包含编辑器 -->
+    <script src="../../dist/vue.runtime.js"></script>
+    <div id="app"></div>
+
+    <script>
+        // template 需要 编辑器 才能运行
+        // const vm = new Vue({
+        //     el: '#app',
+        //     template: '<h1>{{ msg }}</h1>',
+        //     data: {
+        //         msg: 'Hello Vue'
+        //     }
+        // })
+
+        //  Runtime
+        //  render方法不需要编译器
+        const vm = new Vue({
+            el: '#app',
+            render(h) {
+                return h('h1', this.msg)
+            },
+            data: {
+                msg: 'Hello Vue'
+            }
+        })
+    </script>
+</body>
+
+</html>

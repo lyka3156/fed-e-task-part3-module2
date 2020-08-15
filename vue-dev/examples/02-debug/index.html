@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script src="../../dist/vue.js"></script>
+    <div id="app"></div>
+
+    <script>
+        // 观察以下代码，通过阅读源码，回答在页面上输出的结果
+        // 输出结果为 Hello render
+        // 通过阅读源码:
+        // 1. el 不能是 body 或者 html 标签
+        // 2. 如果没有 render，把 template 转换成 render 函数
+        // 3. 如果有 render 方法，直接调用 mount 挂载 DOM
+        const vm = new Vue({
+            el: '#app',
+            template: '<h3>Hello template</h3>',
+            render(h) {
+                return h('h4', 'Hello render')
+            }
+        })
+
+        // 通过上述源码阅读有个疑问就是
+        // $mount 方法是在哪里被调用的？
+        // 通过上述调试我们知道了 $mount 是在 Vue 的构造函数中执行的 Vue._init方法中执行的。 
+    </script>
+</body>
+
+</html>
