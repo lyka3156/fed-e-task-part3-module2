@@ -697,6 +697,8 @@ export function initAssetRegisters(Vue: GlobalAPI) {
 
 
 ### 1.4.2 初始化 Vue 的实例成员
+src/core/instance/index.js
+
 - 定义 Vue 的构造函数
 - 初始化 Vue 的实例成员
 ``` js
@@ -740,6 +742,598 @@ export default Vue
 - stateMixin，eventsMixin，lifecycleMixin，renderMixin的作用
     - 就是给 Vue 的原型上去混入一些成员，就是属性和方法，其实就是给 vue 的对象增加一些实例成员。
 - initMixin 注册了 _init 方法
+
+
+## 1.5 首次渲染的过程
+在如下4个文件中打断点调试
+- src/core/instance/index.js  
+  - 定义了 Vue 的构造函数
+    - 在构造函数中调用了 _init(options)方法
+    - 这个章节就是调试 _init方法，观察首次渲染的过程
+  - 定义了一些 mixin 函数
+    - 这些函数，给 Vue 的原型上挂载一些实例方法
+- src/core/index.js
+  - 调用了 initGlobalAPI(Vue) 
+    - 帮我们初始化了 Vue 的静态成员
+- src/platforms/web/runtime/index.js  
+  - 初始化了更平台相关的内容
+  - 挂载了一些指令    model,show
+  - 挂载了一些组件      Transition,TransitionGroup
+  - 在Vue原型上挂载了 __path__ 和 $mount 方法
+    - __path__    （打补丁方法，对比新旧的 VNode） 
+    - $moutn      挂载 DOM
+- src/platforms/entry-runtime-with-compiler.js
+  - 重写了上一个文件 $mount 方法
+    - 在 $moutn 方法中我们添加了编译的功能，把模板编译成 render 函数
+
+
+
+调试 Vue 首次渲染的过程 在 __init__ 方法打断点， (src/core/instance/index.js)
+
+
+  ![avatar](../images/task1/Vue首次渲染过程.png)
+
+- Vue 初始化，实例成员(src/core/instance/index.js)，静态成员(src/core/index.js)
+- new Vue构造函数，在构造函数中调用了 _init 方法   (src/core/instance/index.js)
+- this._init 做首次渲染的过程 (src\core\instance\init.js)
+- 判断当前实例是不是 Vue 实例，如果是 Vue 实例不进行响应式处理
+- 合并options 
+  - 判断当前实例是不是 component 组件
+    - 是组件就合并用户传入的 options 和 Component 组件的 options
+    - 不是组件合并用户传入的 option 和 Vue 构造函数的options 
+- 设置 _renderProxy (渲染时的代理对象)
+  - 开发环境执行 _initProxy(vm) 
+    - 判断浏览器是否支持 Proxy
+      - 支持：  设置 _initProxy 等于 new Proxy(vm,handlers)，通过 Proxy 代理 vm 实例
+      - 不支持：直接把 vm 实例 设置给 _initProxy
+  - 生产环境，直接把 vm 实例设置给 _renderProxy
+- 执行一些 init 函数给 Vue 实例挂载一些成员
+- 调用 $mount 方法    (src\platforms\web\entry-runtime-with-compiler.js)
+  - 获取实例的 option 选项
+  - 判断 options 选项中是否有 render 函数
+    - 如果没有 render 会获取选项的 template
+      - 判断 template 是否存在
+        - 存在 template:
+          - 是否是字符串
+            - 是否有 # 就认为是 id 选择器，把 id 选择器的 innerHTML 作为 template 返回
+          - 是否有 nodeType 这个属性，有就是一个 dom 元素，把 dom 的 innerHTML 作为template返回
+          - 不是字符串也不是 dom 元素
+            - 开发环境会发出一个警告，当前 template 不合法，并且返回当前实例
+            - 生产环境直接返回当前实例
+        - 不存在 template:
+          - 判断是否有 el 
+            - 判断 el 是不是 dom 元素
+              - 是的话直接返回
+              - 不是的话，会帮我们创建一个 div 节点，然后把 el 克隆一份追加到 div 节点中来，最终把 div 的 innerHTML 返回作为 template
+          
+
+
+    - 有了 template , 现在开始帮我们编译了
+      - 调用 compileToFunctions 帮我们把 template 编译成 render 函数 
+        - 把编译好的 render 函数存到 options 中
+- 最后有了 render 函数之后，执行 mount 函数  (src\platforms\web\runtime\index.js)    
+  - 会重新获取 el 
+    - 因为运行时版本不会执行上面的src\platforms\web\entry-runtime-with-compiler.js 文件获取el，所以要重新获取一遍el 
+  - 调用 mountComponent (跟浏览器无关的代码)
+   - 判断是否有 render 函数
+    - 无 render
+      - 是开发环境，运行时环境，并且通过选项传入了 template，会发出一个警告
+        - 警告：当前运行的是运行时版本，compiler 是无效的，不能编译 template 模板
+   - 调用 callHook 触发了 beforeMount 钩子函数
+   - 定义了 updateComponent 函数，更新组件，就是挂载
+      - 判断是否是开发环境，启动了性能监测了话，会执行一些监测的代码
+      - 调用了 _render 方法
+        - 调用用户传入的 render 获取编译器生成的 render , 他最终会返回 vnode,把 vnode 传给 _update 方法,在 _update 方法中就会把 vnode 转换成真实 dom,最后更新到界面上
+   - 创建了 Watcher 对象，把 updateComponet 函数传递进来了，updateComponent 在 Watcher 对象中执行的   (src\core\observer\watcher.js)
+      - vm: vue 实例
+      - expOrFn:  可以是字符串或者fn
+        - 字符串      (计算属性的watcher,监听器的watcher)
+        - function  update 更新函数 (渲染watcher)
+      - cb  
+      - options
+        - lazy 延迟执行 
+            - 计算属性的watcher延迟执行
+      - isRenderWatcher 是否是渲染 watcher
+      - 给this.getter赋值 判断 expOrFn 是否是函数
+        - 是函数  直接把 expOrFn 赋值给 this.getter
+        - 是字符串  需要进一步处理
+      - 给this.value 赋值
+        - 是否是lazy
+          - 是  赋值 undefind
+          - 否  赋值 this.get()
+      - get 方法中
+        - 把 watcher push 到 Target 中
+        - 调用了 this.getter 方法，也就是调用了 expOrFn 渲染视图
+   - 在 mountComponet 调用 callHook 触发了 mounted 钩子函数
+
+
+## 1.6 数据响应式原理
+数据响应式指的是当数据发生变化时候自动更新视图，不需要我们手动操作dom。
+### 1.6.1 通过查看源码解决下面问题
+- vm.msg = { count: 0 } ，重新给属性赋值，是否是响应式的？
+- vm.arr[0] = 4 ，给数组元素赋值，视图是否会更新
+- vm.arr.length = 0 ，修改数组的 length，视图是否会更新
+- vm.arr.push(4) ，视图是否会更新
+
+### 1.6.2 响应式处理的入口    src\core\observer\index.js
+整个响应式处理的过程是比较复杂的，下面我们先从
+- src\core\instance\init.js
+  - initState(vm) vm 状态的初始化
+  - 初始化了 _data、_props、methods 等
+- src\core\instance\state.js
+``` js
+// 数据的初始化
+if (opts.data) {
+  initData(vm)  // initData 方法把 options的data注入到vue中，并且在内部调用observe 把它转换成响应式对象
+} else {
+  observe(vm._data = {}, true /* asRootData */)   // observe 就是响应式处理的入口
+} 
+```
+- initData(vm)  vm 数据的初始化
+``` js
+function initData(vm: Component) {
+  let data = vm.$options.data
+  // 初始化 _data，组件中 data 是函数，调用函数返回结果
+  // 否则返回 data
+  data = vm._data = typeof data === 'function'
+    ? getData(data, vm)
+    : data || {}
+  if (!isPlainObject(data)) {
+    data = {}
+    process.env.NODE_ENV !== 'production' && warn(
+      'data functions should return an object:\n' +
+      'https://vuejs.org/v2/guide/components.html#data-Must-Be-a-Function',
+      vm
+    )
+  }
+  // proxy data on instance
+  // 获取 data 中的所有属性
+  const keys = Object.keys(data)
+  // 获取 props / methods 
+  const props = vm.$options.props
+  const methods = vm.$options.methods
+  let i = keys.length
+  // 判断 data 上的成员是否和 props/methods 重命
+  while (i--) {
+    const key = keys[i]
+    // 如果重命在开发环境中发送一个警告
+    if (process.env.NODE_ENV !== 'production') {
+      if (methods && hasOwn(methods, key)) {
+        warn(
+          `Method "${key}" has already been defined as a data property.`,
+          vm
+        )
+      }
+    }
+    if (props && hasOwn(props, key)) {
+      process.env.NODE_ENV !== 'production' && warn(
+        `The data property "${key}" is already declared as a prop. ` +
+        `Use prop default value instead.`,
+        vm
+      )
+    } else if (!isReserved(key)) {
+      // 把 data 中的成员注入到 vue 实例
+      proxy(vm, `_data`, key)
+    }
+  }
+  // observe data
+  // 响应式处理
+  observe(data, true /* asRootData */)
+}
+```
+
+- src\core\observer\index.js  (响应式处理的入口)
+  - observe(value, asRootData) 
+  - 负责为每一个 Object 类型的 value 创建一个 observer 实例
+
+``` js
+export function observe (value: any, asRootData: ?boolean): Observer | void {
+  // 判断 value 是否是对象
+  // 不是对象就不要做处理 
+  if (!isObject(value) || value instanceof VNode) {
+    return
+  }
+  let ob: Observer | void
+  // 判断 value 是否有 __ob__(observer对象)  相当于加了一个缓存
+  if (hasOwn(value, '__ob__') && value.__ob__ instanceof Observer) {
+    // 有 observer 对象直接返回
+    ob = value.__ob__
+  } else if (
+    // 没有就创建 observer 对象返回
+    
+    // 判断对象是否可以做响应式处理
+    shouldObserve &&
+    !isServerRendering() &&
+    (Array.isArray(value) || isPlainObject(value)) &&
+    Object.isExtensible(value) &&
+    !value._isVue
+  ) {
+    // 创建一个 Observer 对象
+    ob = new Observer(value)
+  }
+  // 是根数据，vmCount计数++
+  if (asRootData && ob) {
+    ob.vmCount++
+  }
+  return ob
+}
+```
+
+### 1.6.3 Observer
+- src\core\observer\index.js
+  - 对对象做响应化处理
+  - 对数组做响应化处理
+``` js
+export class Observer {
+  // 观察对象
+  value: any;
+  // 依赖对象  
+  dep: Dep;
+  // 实例计数器
+  vmCount: number; // number of vms that have this object as root $data
+
+  constructor(value: any) {
+    this.value = value
+    this.dep = new Dep()
+    // 初始化实例的 vmCount 为0
+    this.vmCount = 0
+    // 将实例挂载对象观察对象的 __obj__ 胡思性
+    def(value, '__ob__', this)
+    // 数组的响应式处理
+    if (Array.isArray(value)) {
+      if (hasProto) {
+        protoAugment(value, arrayMethods)
+      } else {
+        copyAugment(value, arrayMethods, arrayKeys)
+      }
+      // 为数组中的每一个对象创建 observer 实例
+      this.observeArray(value)
+    } else {
+      // 遍历对象中的每一个属性，转换成 setter/getter
+      this.walk(value)
+    }
+  }
+
+  /**
+   * Walk through all properties and convert them into
+   * getter/setters. This method should only be called when
+   * value type is Object.
+   */
+  walk(obj: Object) {
+    // 获取观察对象的每一个属性
+    const keys = Object.keys(obj)
+    // 遍历每一个属性，设置为响应式数据
+    for (let i = 0; i < keys.length; i++) {
+      // 把对象的属性转换成 getter/setter 
+      defineReactive(obj, keys[i])
+    }
+  }
+
+  /**
+   * Observe a list of Array items.
+   */
+  // 对数组做响应式处理
+  observeArray(items: Array<any>) {
+    for (let i = 0, l = items.length; i < l; i++) {
+      observe(items[i])
+    }
+  }
+}
+```
+- walk(obj) 
+  - 遍历 obj 的所有属性，为每一个属性调用 defineReactive() 方法，设置 getter/setter
+
+总结：Observer 类的作用
+- Observer 类会附加到每个观察的对象
+- 一旦附加，observer 这个对象就会转换目标对象的所有属性
+- 把所有属性转换成 getter/setter
+- getter/setter 的目的是收集依赖(创建watcher)和派发更新(dep.notify发送通知)
+
+
+
+### 1.6.4 defineReactive
+- src\core\observer\index.js
+- defineReactive(obj, key, val, customSetter, shallow)
+  - 为一个对象定义一个响应式的属性，每一个属性对应一个 dep 对象
+  - 如果该属性的值是对象，继续调用 observe
+  - 如果给属性赋新值，继续调用 observe
+  - 如果数据更新发送通知
+
+对象响应式处理
+``` js
+// 为一个对象定义一个响应式的属性
+export function defineReactive(
+  obj: Object,
+  key: string,
+  val: any,
+  customSetter?: ?Function,
+  // true 浅度监听，false 深度监听
+  shallow?: boolean
+) {
+  // 创建依赖对象实例
+  const dep = new Dep()
+  // 获取 obj 的属性描述符
+  const property = Object.getOwnPropertyDescriptor(obj, key)
+  // 当前属性不可配置，直接返回
+  if (property && property.configurable === false) {
+    return
+  }
+  // 提供预定义的存取器函数
+  // 这个 getter/setter 可能是用户传入的
+  // 把用户传入的先取出来，取起来 
+  // cater for pre-defined getter/setters
+  const getter = property && property.get
+  const setter = property && property.set
+  if ((!getter || setter) && arguments.length === 2) {
+    // 获取 val 值
+    val = obj[key]
+  }
+
+  // 判断是否递归观察子对象，并将子对象属性都转换成 getter/setter，返回子观察对象
+  let childOb = !shallow && observe(val)
+  Object.defineProperty(obj, key, {
+    enumerable: true,
+    configurable: true,
+    get: function reactiveGetter() {
+      // 如果预定义的 getter 存在则 value 等于 getter 返回的结果
+      // 否则直接赋予属性值
+      const value = getter ? getter.call(obj) : val
+      // 如果存在当前依赖目标，即 watcher 对象，则建立依赖
+      if (Dep.target) {
+        // dep() 添加相互的依赖
+        // 1个组件对应一个 watcher 对象
+        // 1个watcher会对应多个dep（要观察的属性很多）
+        // 我们可以手动创建多个 watcher 监听1个属性的变化，1个dep可以对应多个watcher
+        dep.depend()
+        // 如果子观察目标存在，建立子对象的依赖关系，将来 Vue.set() 会用到
+        if (childOb) {
+          childOb.dep.depend()
+          // 如果属性是数组，则特殊处理收集数组对象依赖
+          if (Array.isArray(value)) {
+            dependArray(value)
+          }
+        }
+      }
+      // 返回属性值
+      return value
+    },
+    set: function reactiveSetter(newVal) {
+      // 如果预定义的 getter 存在则 value 等于 getter 返回的结果
+      // 否则直接赋予属性值
+      const value = getter ? getter.call(obj) : val
+      // 如果新值等于旧值或者新值为NaN则不执行
+      /* eslint-disable no-self-compare */
+      if (newVal === value || (newVal !== newVal && value !== value)) {
+        return
+      }
+      /* eslint-enable no-self-compare */
+      if (process.env.NODE_ENV !== 'production' && customSetter) {
+        customSetter()
+      }
+      // 如果预定义的 setter 存在则 调用 setter 方法给这个属性去赋值 
+      // 否则直接把新值赋值给这个属性
+      // #7981: for accessor properties without setter
+      if (getter && !setter) return
+      if (setter) {
+        setter.call(obj, newVal)
+      } else {
+        val = newVal
+      }
+      // 如果新值是对象，观察子对象并返回子的 observer 对象
+      childOb = !shallow && observe(newVal)
+      // 派发更新(发布更改通知)
+      dep.notify()
+    }
+  })
+}
+```
+
+数组响应式原理
+- Observer 的构造函数中
+``` js
+// 数组的响应式处理
+if (Array.isArray(value)) {
+   // 浏览器是否支持对象的 prototype 属性 
+  if (hasProto) {
+    protoAugment(value, arrayMethods)
+  } else {
+    copyAugment(value, arrayMethods, arrayKeys)
+  }
+    // 为数组中的每一个对象创建一个 observer 实例
+    this.observeArray(value)
+  } else {
+    // 编译对象中的每一个属性，转换成 setter/getter
+    this.walk(value)
+}
+function protoAugment (target, src: Object) {
+  /* eslint-disable no-proto */
+  target.__proto__ = src
+  /* eslint-enable no-proto */
+}
+/* istanbul ignore next */
+function copyAugment (target: Object, src: Object, keys: Array<string>) {
+    for (let i = 0, l = keys.length; i < l; i++) {
+      const key = keys[i]
+      def(target, key, src[key])
+    }
+}
+```
+- 处理数组修改数据的方法
+  - src\core\observer\array.js
+``` js
+import { def } from '../util/index'
+
+const arrayProto = Array.prototype
+// 克隆数组的原型
+export const arrayMethods = Object.create(arrayProto)
+
+// 修改数组的元素的方法
+const methodsToPatch = [
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse'
+]
+
+/**
+ * Intercept mutating methods and emit events
+ */
+methodsToPatch.forEach(function (method) {
+  // cache original method
+  // 保存数组原方法
+  const original = arrayProto[method]
+  // 调用 Object.defineProperty() 重新定义修改数组的方法
+  def(arrayMethods, method, function mutator(...args) {
+    // 执行数组的原始方法
+    const result = original.apply(this, args)
+    // 获取数组对象的 ob 对象
+    const ob = this.__ob__
+    let inserted
+    switch (method) {
+      case 'push':
+      case 'unshift':
+        inserted = args
+        break
+      case 'splice':
+        inserted = args.slice(2)
+        break
+    }
+    // 对插入的新元素，重新遍历数组元素设置为响应式数据
+    if (inserted) ob.observeArray(inserted)
+    // notify change
+    // 调用了修改数组的方法，调用数组的ob对象发送通知
+    ob.dep.notify()
+    return result
+  })
+})
+```
+
+### 1.6.5 Dep 类
+- 在 defineReactive 的 getter 方法中收集依赖
+``` js
+get: function reactiveGetter() {
+    // 如果预定义的 getter 存在则 value 等于 getter 返回的结果
+    // 否则直接赋予属性值
+    const value = getter ? getter.call(obj) : val
+    // 如果存在当前依赖目标，即 watcher 对象，则建立依赖
+    if (Dep.target) {
+      // dep() 添加相互的依赖
+      // 1个组件对应一个 watcher 对象
+      // 1个watcher会对应多个dep（要观察的属性很多）
+      // 我们可以手动创建多个 watcher 监听1个属性的变化，1个dep可以对应多个watcher
+      dep.depend()
+      // 如果子观察目标存在，建立子对象的依赖关系，将来 Vue.set() 会用到
+      if (childOb) {
+        // 在 $set,$delete中用
+        childOb.dep.depend()
+        // 如果属性是数组，则特殊处理收集数组对象依赖
+        if (Array.isArray(value)) {
+          dependArray(value)
+        }
+      }
+    }
+    // 返回属性值
+    return value
+  },
+```
+
+- src\core\observer\dep.js
+- 依赖对象
+- 记录 watcher 对象
+- depend() -- watcher 记录对应的 dep
+- 发布通知
+
+> 1. 在 defineReactive() 的 getter 中创建 dep 对象，并判断 Dep.target 是否有值（一会再来看有什么时候有值得）, 调用 dep.depend()
+> 2. dep.depend() 内部调用 Dep.target.addDep(this)，也就是 watcher 的 addDep() 方法，它内部最调用 dep.addSub(this)，把 watcher 对象，添加到 dep.subs.push(watcher) 中，也就是把订阅者添加到 dep 的 subs 数组中，当数据变化的时候调用 watcher 对象的 update() 方法
+> 3. 什么时候设置的 Dep.target? 通过简单的案例调试观察。调用 mountComponent() 方法的时候，创建了渲染 watcher 对象，执行 watcher 中的 get() 方法
+> 4. get() 方法内部调用 pushTarget(this)，把当前 Dep.target = watcher，同时把当前watcher 入栈，因为有父子组件嵌套的时候先把父组件对应的 watcher 入栈，再去处理子组件的 watcher，子组件的处理完毕后，再把父组件对应的 watcher 出栈，继续操作
+>5. Dep.target 用来存放目前正在使用的watcher。全局唯一，并且一次也只能有一个 watcher被使用
+``` js
+let uid = 0
+// dep 是个可观察对象，可以有多个指令订阅它
+export default class Dep {
+  // 静态属性，watcher 对象
+  static target: ?Watcher;
+  // dep 实例 Id
+  id: number;
+  // dep 实例对应的 watcher 对象/订阅者数组
+  subs: Array<Watcher>;
+
+  constructor() {
+    this.id = uid++
+    this.subs = []
+  }
+
+  // 添加新的 订阅者 watcher 对象
+  addSub(sub: Watcher) {
+    this.subs.push(sub)
+  }
+
+  // 移除 订阅者 watcher 对象
+  removeSub(sub: Watcher) {
+    remove(this.subs, sub)
+  }
+
+  // 将观察对象和 watcher 建立依赖
+  depend() {
+    if (Dep.target) {
+      // 如果 target 存在，把 dep 对象添加到 watcher 的依赖中
+      Dep.target.addDep(this)
+    }
+  }
+
+  notify() {
+    // stabilize the subscriber list first
+    const subs = this.subs.slice()
+    if (process.env.NODE_ENV !== 'production' && !config.async) {
+      // subs aren't sorted in scheduler if not running async
+      // we need to sort them now to make sure they fire in correct
+      // order
+      subs.sort((a, b) => a.id - b.id)
+    }
+    for (let i = 0, l = subs.length; i < l; i++) {
+      subs[i].update()
+    }
+  }
+}
+
+// The current target watcher being evaluated.
+// This is globally unique because only one watcher
+// can be evaluated at a time.
+// Dep.target 用来存放目前正在使用的watcher
+// 全局唯一，并且一次也只能有一个 watcher 被使用
+Dep.target = null
+const targetStack = []
+
+// 入栈并将当前 watcher 赋值给 Dep.target
+// 每一个 vue 的组件都对应一个 watcher 对象
+// 如果组件有嵌套的话，... 这就是栈的目的
+export function pushTarget(target: ?Watcher) {
+  targetStack.push(target)
+  Dep.target = target
+}
+
+export function popTarget() {
+  // 出栈操作
+  targetStack.pop()
+  Dep.target = targetStack[targetStack.length - 1]
+}
+```
+
+
+
+
+### 1.6.6 Watcher 类
+### 1.6.7 调试响应式数据执行过程
+### 1.6.8 回答以下问题
+
+## 1.7
+
+
+## 1.8
 
 ## 1.10 静态成员和实例成员初始化过程
 
