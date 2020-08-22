@@ -851,9 +851,13 @@ export default Vue
 数据响应式指的是当数据发生变化时候自动更新视图，不需要我们手动操作dom。
 ### 1.6.1 通过查看源码解决下面问题
 - vm.msg = { count: 0 } ，重新给属性赋值，是否是响应式的？
+  - 不是响应式的
 - vm.arr[0] = 4 ，给数组元素赋值，视图是否会更新
+  - 不会更新
 - vm.arr.length = 0 ，修改数组的 length，视图是否会更新
+  - 不会更新
 - vm.arr.push(4) ，视图是否会更新
+  - 会更新，Vue 修补了数组的 pop,push,reverse,shift,sort,splice,unshift方法，调用这些方法的时候会发送通知修改数据
 
 ### 1.6.2 响应式处理的入口    src\core\observer\index.js
 整个响应式处理的过程是比较复杂的，下面我们先从
@@ -1327,17 +1331,605 @@ export function popTarget() {
 
 
 ### 1.6.6 Watcher 类
+- Watcher 分为三种，Computed Watcher、用户 Watcher (侦听器)、渲染 Watcher
+- 渲染 Watcher 的创建时机
+  - /src/core/instance/lifecycle.js
+``` js
+export function mountComponent (
+  vm: Component,
+  el: ?Element,
+  hydrating?: boolean
+  ): Component {
+  vm.$el = el
+  ……
+  callHook(vm, 'beforeMount')
+  let updateComponent
+  /* istanbul ignore if */
+  if (process.env.NODE_ENV !== 'production' && config.performance && mark)
+  {
+    ……
+  } else {
+    updateComponent = () => {
+      vm._update(vm._render(), hydrating)
+    }
+  }
+  // 创建渲染 Watcher，expOrFn 为 updateComponent
+  // we set this to vm._watcher inside the watcher's constructor
+  // since the watcher's initial patch may call $forceUpdate (e.g. inside child
+  // component's mounted hook), which relies on vm._watcher being already defined
+  new Watcher(vm, updateComponent, noop, {
+    before () {
+      if (vm._isMounted && !vm._isDestroyed) {
+        callHook(vm, 'beforeUpdate')
+      }
+    }
+  }, true /* isRenderWatcher */)
+  hydrating = false
+  // manually mounted instance, call mounted on self
+  // mounted is called for render-created child components in its inserted hook
+  if (vm.$vnode == null) {
+    vm._isMounted = true
+    callHook(vm, 'mounted')
+  }
+  return vm
+}
+```
+- 渲染 wacher 创建的位置 lifecycle.js 的 mountComponent 函数中
+- Wacher 的构造函数初始化，处理 expOrFn （渲染 watcher 和侦听器处理不同）
+- 调用 this.get() ，它里面调用 pushTarget() 然后 this.getter.call(vm, vm) （对于渲染 wacher 调用 updateComponent），如果是用户 wacher 会获取属性的值（触发get操作）
+- 当数据更新的时候，dep 中调用 notify() 方法，notify() 中调用 wacher 的 update() 方法
+- update() 中调用 queueWatcher()
+- queueWatcher() 是一个核心方法，去除重复操作，调用 flushSchedulerQueue() 刷新队列并执行watcher
+- flushSchedulerQueue() 中对 wacher 排序，遍历所有 wacher ，如果有 before，触发生命周期的钩子函数 beforeUpdate，执行 wacher.run()，它内部调用 this.get()，然后调用 this.cb() (渲染wacher 的 cb 是 noop)
+- 整个流程结束
+
+
+
 ### 1.6.7 调试响应式数据执行过程
+- 数组响应式处理的核心过程和数组收集依赖的过程
+- 当数组的数据改变的时候 watcher 的执行过程
+``` js
+<div id="app">
+  {{ arr }}
+</div>
+<script src="../../dist/vue.js"></script>
+<script>
+const vm = new Vue({
+  el: '#app',
+  data: {
+    arr: [2, 3, 5]
+  }
+})
+</script>
+```
+
+![avatar](../images/task1/数据响应式原理1.png)
+![avatar](../images/task1/数据响应式原理2.png)
+![avatar](../images/task1/数据响应式原理3.png)
+![avatar](../images/task1/数据响应式原理4.png)
+
 ### 1.6.8 回答以下问题
+- [检测变化的注意](https://cn.vuejs.org/v2/guide/reactivity.html#%E6%A3%80%E6%B5%8B%E5%8F%98%E5%8C%96%E7%9A%84%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9)
+``` js
+methods: {
+  handler () {
+    this.obj.count = 555
+    this.arr[0] = 1
+    this.arr.length = 0
+    this.arr.push(4)
+  }
+}
+```
+- 转换成响应式数据
+``` js
+methods: {
+  handler () {
+    this.$set(this.obj, 'count', 555)
+    this.$set(this.arr, 0, 1)
+    this.arr.splice(0)
+  }
+}
+```
 
-## 1.7
+## 1.7 实例方法/数据
+[实例方法/数据](https://cn.vuejs.org/v2/api/#%E5%AE%9E%E4%BE%8B%E6%96%B9%E6%B3%95-%E6%95%B0%E6%8D%AE)
+
+### 1.7.1 vm.$set
+[vm.$set](https://cn.vuejs.org/v2/api/#vm-set)
+- 功能
+  - 向响应式对象中添加一个属性，并确保这个新属性同样是响应式的，且触发视图更新。它必须用于向响应式对象上添加新属性，因为 Vue 无法探测普通的新增属性 (比如this.myObject.newProperty = 'hi')
+> 注意：对象不能是 Vue 实例，或者 Vue 实例的根数据对象。
+- 示例
+``` js
+vm.$set(obj, 'foo', 'test')
+```
+定义位置
+- Vue.set()
+  - global-api/index.js
+``` js
+// 3. 静态方法 set/delete/nextTick
+Vue.set = set         // Vue.$set 和 vue.set 都指向同一个 set 方法
+Vue.delete = del
+Vue.nextTick = nextTick
+```
+- vm.$set()
+  - instance/index.js
+``` js
+// 注册 vm 的 $data/$props/$set/$delete/$watch
+// instance/state.js
+stateMixin(Vue)
+// instance/state.js
+Vue.prototype.$set = set        // Vue.$set 和 vue.set 都指向同一个 set 方法
+Vue.prototype.$delete = del
+```
+
+源码
+- set() 方法
+  - observer/index.js
+``` js
+export function set(target: Array<any> | Object, key: any, val: any): any {
+  // 开发环境中，如果 target 是一个元素值或者 undefined 会发出一个警告 
+  if (process.env.NODE_ENV !== 'production' &&
+    (isUndef(target) || isPrimitive(target))
+  ) {
+    warn(`Cannot set reactive property on undefined, null, or primitive value: ${(target: any)}`)
+  }
+  // 判断 target 是否是数组，key 是否是合法的索引
+  if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 获取数组的 length 和插入的索引最大值
+    target.length = Math.max(target.length, key)
+    // 通过 splice 对 key 位置的元素进行替换
+    // splice 方法不是数组的原生方法，是在 array.js 进行了响应式的处理的方法
+    target.splice(key, 1, val)
+    return val
+  }
+  // 如果 key 在对象中已经存在直接赋值
+  if (key in target && !(key in Object.prototype)) {
+    target[key] = val
+    return val
+  }
+  // 获取 target 中的 observer 对象
+  const ob = (target: any).__ob__
+  // 如果 target 是 vue 实例或者 $data 会发出一个警告，并直接返回 
+  if (target._isVue || (ob && ob.vmCount)) {
+    process.env.NODE_ENV !== 'production' && warn(
+      'Avoid adding reactive properties to a Vue instance or its root $data ' +
+      'at runtime - declare it upfront in the data option.'
+    )
+    return val
+  }
+  // 如果 ob 不存在，target 不是响应式对象，直接赋值
+  if (!ob) {
+    target[key] = val
+    return val
+  }
+  // 把 key 设置为响应式属性
+  defineReactive(ob.value, key, val)
+  // 发送通知
+  // 这里能发送通知是因为我们给每个字段收集依赖的时候，
+  // 给每个子对象对创建了一个 childOb，给childOb也收集了依赖
+  // 所以这里才能发送通知
+  ob.dep.notify()
+  return val
+}
+```
+
+调试
+``` html
+<div id="app">
+  {{ obj.msg }}
+  <br>
+  {{ obj.foo }}
+</div>
+<script src="../../dist/vue.js"></script>
+<script>
+  const vm = new Vue({
+    el: '#app',
+    data: {
+      obj: {
+        msg: 'hello set'
+      }
+    }
+  })
+  // 非响应式数据
+  // vm.obj.foo = 'test'
+  vm.$set(vm.obj, 'foo', 'test')
+</script>
+
+```
+> 回顾  defineReactive 中的 childOb，给每一个响应式对象设置一个 ob
+> 调用 $set 的时候，会获取 ob 对象，并通过 ob.dep.notify() 发送通知
+### 1.7.2 vm.$delete
+[vm.$delete](https://cn.vuejs.org/v2/api/#vm-delete)
+- 功能
+  - 删除对象的属性。如果对象是响应式的，确保删除能触发更新视图。这个方法主要用于避开 Vue不能检测到属性被删除的限制，但是你应该很少会使用它。
+> 注意：目标对象不能是一个 Vue 实例或 Vue 实例的根数据对象。
+- 示例
+> vm.$delete(vm.obj, 'msg')
+
+定义位置
+- Vue.delete()
+  - global-api/index.js
+``` js
+// 3. 静态方法 set/delete/nextTick
+Vue.set = set         
+Vue.delete = del        // Vue.$delete 和 vue.delete 都指向同一个 del 方法
+Vue.nextTick = nextTick
+```
+- vm.$delete()
+  - instance/index.js
+``` js
+// 注册 vm 的 $data/$props/$set/$delete/$watch
+stateMixin(Vue)
+// instance/state.js
+Vue.prototype.$set = set
+Vue.prototype.$delete = del // Vue.$delete 和 vue.delete 都指向同一个 del 方法
+```
+源码
+- src\core\observer\index.js
+``` js
+export function del(target: Array<any> | Object, key: any) {
+  // 开发环境中，如果 target 是一个元素值或者 undefined 会发出一个警告 
+  if (process.env.NODE_ENV !== 'production' &&
+    (isUndef(target) || isPrimitive(target))
+  ) {
+    warn(`Cannot delete reactive property on undefined, null, or primitive value: ${(target: any)}`)
+  }
+  // 判断是否是数组，以及 key 是否合法
+  if (Array.isArray(target) && isValidArrayIndex(key)) {
+    // 如果是数组通过 splice 删除
+    // splice 做过响应式处理
+    target.splice(key, 1)
+    return
+  }
+  // 获取 target 的 obj 对象
+  const ob = (target: any).__ob__
+  // target 如果是 vue 实例或者 $data 对象，直接返回
+  if (target._isVue || (ob && ob.vmCount)) {
+    process.env.NODE_ENV !== 'production' && warn(
+      'Avoid deleting properties on a Vue instance or its root $data ' +
+      '- just set it to null.'
+    )
+    return
+  }
+  // 如果 target 对象没有 key 属性直接返回
+  if (!hasOwn(target, key)) {
+    return
+  }
+  // 删除属性
+  delete target[key]
+  if (!ob) {
+    return
+  }
+  // 通过 ob 发送通知
+  ob.dep.notify()
+}
+```
+
+### 1.7.3 vm.$watch
+[vm.$watch](https://cn.vuejs.org/v2/api/#vm-watch)
+
+vm.$watch( expOrFn, callback, [options] )
+- 功能
+  - 观察 Vue 实例变化的一个表达式或计算属性函数。回调函数得到的参数为新值和旧值。表达式只接受监督的键路径。对于更复杂的表达式，用一个函数取代。
+- 参数
+  - expOrFn：要监视的 $data 中的属性，可以是表达式或函数
+  - callback：数据变化后执行的函数
+    - 函数：回调函数
+    - 对象：具有 handler 属性(字符串或者函数)，如果该属性为字符串则 methods 中相应的定义
+  - options：可选的选项
+    - deep：布尔类型，深度监听
+    - immediate：布尔类型，是否立即执行一次回调函数
+- 示例
+``` js
+const vm = new Vue({
+  el: '#app',
+  data: {
+    a: '1',
+    b: '2',
+    msg: 'Hello Vue',
+    user: {
+      firstName: '诸葛',
+      lastName: '亮'
+    }
+  }
+})
+// expOrFn 是表达式
+vm.$watch('msg', function (newVal, oldVal) {
+  console.log(newVal, oldVal)
+})
+vm.$watch('user.firstName', function (newVal, oldVal) {
+  console.log(newVal)
+})
+// expOrFn 是函数
+vm.$watch(function () {
+  return this.a + this.b
+}, function (newVal, oldVal) {
+  console.log(newVal)
+})
+// deep 是 true，消耗性能
+vm.$watch('user', function (newVal, oldVal) {
+  // 此时的 newVal 是 user 对象
+  console.log(newVal === vm.user)
+}, {
+  deep: true
+})
+// immediate 是 true
+vm.$watch('msg', function (newVal, oldVal) {
+  console.log(newVal)
+}, {
+  immediate: true
+})
+```
+
+三种类型的 Watcher 对象
+- 没有静态方法，因为 $watch 方法中要使用 Vue 的实例
+- Watcher 分三种：计算属性 Watcher、用户 Watcher (侦听器)、渲染 Watcher
+- 创建顺序：计算属性 Watcher、用户 Watcher (侦听器)、渲染 Watcher
+- vm.$watch()
+  - src\core\instance\state.js
+
+源码
+``` js
+// src\core\instance\state.js
+// 1. 创建用户 watcher (监听器)  watcher顺序第二
+if (opts.watch && opts.watch !== nativeWatch) {
+  initWatch(vm, opts.watch)
+}
+// 2. 遍历所有 watcher
+function initWatch(vm: Component, watch: Object) {
+  // 遍历 options 的 watch 对象
+  for (const key in watch) {
+    // 找到 watch 对象的所有属性对应的值
+    const handler = watch[key]
+    // handler 是数组，会把我们当前监听的属性创建多个处理函数
+    // 也就是当这个属性发生变化的时候会触发多个回调函数
+    if (Array.isArray(handler)) {
+      for (let i = 0; i < handler.length; i++) {
+        createWatcher(vm, key, handler[i])
+      }
+    } else {
+      createWatcher(vm, key, handler)
+    }
+  }
+}
+// 3 为 watcher 添加处理函数 handler
+function createWatcher(
+  vm: Component,
+  expOrFn: string | Function,
+  handler: any,
+  options?: Object
+) {
+  // 如果handler是原生对象 
+  // watch("age",{handler:()=>{},deep:true,immediate:true})
+  if (isPlainObject(handler)) {
+    options = handler
+    handler = handler.handler
+  }
+  // 如果handler是字符串 找到 methods 中对应的方法作为我们的处理函数
+  // watch("age",getAge)      这个getAge作为 methods 中的方法
+  if (typeof handler === 'string') {
+    handler = vm[handler]
+  }
+  // 最后调用 $watch 方法实现监听
+  return vm.$watch(expOrFn, handler, options)
+}
+
+// 4. 注册$watch方法，监视数据的变化
+Vue.prototype.$watch = function (
+    expOrFn: string | Function,
+    cb: any,
+    options?: Object
+  ): Function {
+    // 获取 Vue 实例 this
+    const vm: Component = this
+    if (isPlainObject(cb)) {
+      // 判断如果 cb 是对象执行 createWatcher
+      return createWatcher(vm, expOrFn, cb, options)
+    }
+    options = options || {}
+    // 标记为用户 watcher
+    options.user = true
+    // 创建用户 watcher 对象 
+    const watcher = new Watcher(vm, expOrFn, cb, options)
+    // 判断 immediate 如果为 true
+    if (options.immediate) {
+      try {
+        // 立即执行一次 cb 回调，并且把当前值传入
+        cb.call(vm, watcher.value)
+      } catch (error) {
+        handleError(error, vm, `callback for immediate watcher "${watcher.expression}"`)
+      }
+    }
+    // 返回取消监听的
+    return function unwatchFn() {
+      watcher.teardown()
+    }
+  }
+}
+```
+
+调试
+- 查看 watcher 的创建顺序
+  - 计算属性 watcher    src\core\instance\state.js
+    - 在initState 中执行 initComputed(vm,optioins.computed) 创建的
+  ![avatar](../images/task1/计算属性watcher.png)
+  - 用户 wacher(侦听器)   src\core\instance\state.js
+    - 在initState 中执行 initWatch(vm,optioins.watch) 创建的
+  ![avatar](../images/task1/用户watcher(监听器).png)
+  - 渲染 wacher src\core\instance\lifecycle.js
+    - 在 mountCompnent 中 new Watcher(vm,updateComponent,noop,{before()},true)  中创建的
+  ![avatar](../images/task1/渲染watcher.png)
+
+- 查看渲染 watcher 的执行过程
+  - 当数据更新，defineReactive 的 set 方法中调用 dep.notify()
+  - 调用 watcher 的 update()
+  - 调用 queueWatcher()，把 wacher 存入队列，如果已经存入，不重复添加
+  - 循环调用 flushSchedulerQueue()
+    - 通过 nextTick()，在消息循环结束之前时候调用 flushSchedulerQueue()
+  - 调用 wacher.run()
+    - 调用 wacher.get() 获取最新值
+    - 如果是渲染 wacher 结束
+    - 如果是用户 watcher，调用 this.cb()
 
 
-## 1.8
+## 1.8 异步更新队列-nextTick
+[异步更新队列-nextTick](https://cn.vuejs.org/v2/guide/reactivity.html#%E5%BC%82%E6%AD%A5%E6%9B%B4%E6%96%B0%E9%98%9F%E5%88%97)
 
-## 1.10 静态成员和实例成员初始化过程
+- Vue 更新 DOM 是异步执行的，批量的在下次 DOM 更新循环结束之后执行延迟回调。在修改数据之后立即使用这个方法，获取更新后的 DOM。
+- vm.$nextTick(function () { /* 操作 DOM */ }) / Vue.nextTick(function () {})
+- 在视图渲染完成才执行
 
+vm.$nextTick() 代码演示
+``` html
+  <div id="app">
+    <p id="p" ref="p1">{{ msg }}</p>
+    {{ name }}<br>
+    {{ title }}<br>
+  </div>
+  <script src="../../dist/vue.js"></script>
+  <script>
+    const vm = new Vue({
+      el: '#app',
+      data: {
+        msg: 'Hello nextTick',
+        name: 'Vue.js',
+        title: 'Title'
+      },
+      mounted() {
+        this.msg = 'Hello World'
+        this.name = 'Hello snabbdom'
+        this.title = 'Vue.js'
+  
+        Vue.nextTick(() => {
+          console.log(this.$refs.p1.textContent)
+        })
+      }
+    })
+  </script>
+```
+定义位置
+- src\core\instance\render.js
+``` js
+Vue.prototype.$nextTick = function (fn: Function) {
+  return nextTick(fn, this)
+}
+```
+源码
+- 手动调用 vm.$nextTick()
+- 在 Watcher 的 queueWatcher 中执行 nextTick()
+- src\core\util\next-tick.js
 
-## 1.20 首次渲染的过程
+``` js
+// 1. nextTick 实现 src\core\util\next-tick.js
+export function nextTick(cb?: Function, ctx?: Object) {
+  let _resolve
+  // 把 cb 加上异常处理存入 callbacks 数组中
+  callbacks.push(() => {
+    if (cb) {
+      try {
+        // 调用 cb()
+        cb.call(ctx)
+      } catch (e) {
+        handleError(e, ctx, 'nextTick')
+      }
+    } else if (_resolve) {
+      _resolve(ctx)
+    }
+  })
+  if (!pending) {
+    pending = true
+    // 内部遍历 callbacks 数组， 找到数组中的回调函数，然后依次调用
+    timerFunc()
+  }
+  // $flow-disable-line
+  if (!cb && typeof Promise !== 'undefined') {
+    // 返回 promise 对象
+    return new Promise(resolve => {
+      _resolve = resolve
+    })
+  }
+}
 
-## 1.31 数据响应式原理
+export let isUsingMicroTask = false
+
+const callbacks = []
+let pending = false
+
+function flushCallbacks() {
+  pending = false
+  const copies = callbacks.slice(0)
+  callbacks.length = 0
+  for (let i = 0; i < copies.length; i++) {
+    copies[i]()
+  }
+}
+
+// Here we have async deferring wrappers using microtasks.
+// In 2.5 we used (macro) tasks (in combination with microtasks).
+// However, it has subtle problems when state is changed right before repaint
+// (e.g. #6813, out-in transitions).
+// Also, using (macro) tasks in event handler would cause some weird behaviors
+// that cannot be circumvented (e.g. #7109, #7153, #7546, #7834, #8109).
+// So we now use microtasks everywhere, again.
+// A major drawback of this tradeoff is that there are some scenarios
+// where microtasks have too high a priority and fire in between supposedly
+// sequential events (e.g. #4521, #6690, which have workarounds)
+// or even between bubbling of the same event (#6566).
+let timerFunc
+
+// The nextTick behavior leverages the microtask queue, which can be accessed
+// via either native Promise.then or MutationObserver.
+// MutationObserver has wider support, however it is seriously bugged in
+// UIWebView in iOS >= 9.3.3 when triggered in touch event handlers. It
+// completely stops working after triggering a few times... so, if native
+// Promise is available, we will use it:
+/* istanbul ignore next, $flow-disable-line */
+if (typeof Promise !== 'undefined' && isNative(Promise)) {
+  const p = Promise.resolve()
+  // 1. 优先使用 promise 微任务来执行
+  // 微任务是从 dom 树上获取数据的，此时我们的 dom 还没有渲染到浏览器上来
+  // 也就是数据已经更新了，但是可能拿不到视图上的最新结果。
+  timerFunc = () => {
+    p.then(flushCallbacks)
+    // In problematic UIWebViews, Promise.then doesn't completely break, but
+    // it can get stuck in a weird state where callbacks are pushed into the
+    // microtask queue but the queue isn't being flushed, until the browser
+    // needs to do some other work, e.g. handle a timer. Therefore we can
+    // "force" the microtask queue to be flushed by adding an empty timer.
+    if (isIOS) setTimeout(noop)
+  }
+  isUsingMicroTask = true
+} else if (!isIE && typeof MutationObserver !== 'undefined' && (
+  isNative(MutationObserver) ||
+  // PhantomJS and iOS 7.x
+  MutationObserver.toString() === '[object MutationObserverConstructor]'
+)) {
+  // Use MutationObserver where native Promise is not available,
+  // e.g. PhantomJS, iOS7, Android 4.4
+  // (#6466 MutationObserver is unreliable in IE11)
+  let counter = 1
+  const observer = new MutationObserver(flushCallbacks)
+  const textNode = document.createTextNode(String(counter))
+  observer.observe(textNode, {
+    characterData: true
+  })
+  timerFunc = () => {
+    counter = (counter + 1) % 2
+    textNode.data = String(counter)
+  }
+  isUsingMicroTask = true
+} else if (typeof setImmediate !== 'undefined' && isNative(setImmediate)) {
+  // Fallback to setImmediate.
+  // Technically it leverages the (macro) task queue,
+  // but it is still a better choice than setTimeout.
+  timerFunc = () => {
+    setImmediate(flushCallbacks)
+  }
+} else {
+  // Fallback to setTimeout.
+  timerFunc = () => {
+    setTimeout(flushCallbacks, 0)
+  }
+}
+```
