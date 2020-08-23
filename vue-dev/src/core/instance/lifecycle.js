@@ -61,19 +61,22 @@ export function lifecycleMixin(Vue: Class<Component>) {
   Vue.prototype._update = function (vnode: VNode, hydrating?: boolean) {
     const vm: Component = this
     const prevEl = vm.$el
+    // 获取之前处理的 vnode
     const prevVnode = vm._vnode
     const restoreActiveInstance = setActiveInstance(vm)
     vm._vnode = vnode
     // Vue.prototype.__patch__ is injected in entry points
     // based on the rendering backend used.
-    // 是否是首次渲染
+    // 1. 是否是首次渲染
     if (!prevVnode) {
       // initial render
+      // 1.1 首次渲染
       // 将虚拟dom转换成真实dom，并挂载到$el上
       vm.$el = vm.__patch__(vm.$el, vnode, hydrating, false /* removeOnly */)
     } else {
       // updates
-      // 数据变化
+      // 1.2 数据变化
+      // 对比新旧两个 vnode 的差异，并且把差异更新到真实 dom 上
       vm.$el = vm.__patch__(prevVnode, vnode)
     }
     restoreActiveInstance()
@@ -194,6 +197,8 @@ export function mountComponent(
     }
   } else {
     updateComponent = () => {
+      // _render: 用户传入的 render 或者把 template 编译成的 render ,帮我们生成 vnode
+      // _update: 里面调用了 patch 函数，对比两个 vnode 的差异，并且把差异更新到真实 dom 上来，也就是生成真实 dom
       vm._update(vm._render(), hydrating)
     }
   }
@@ -201,6 +206,7 @@ export function mountComponent(
   // we set this to vm._watcher inside the watcher's constructor
   // since the watcher's initial patch may call $forceUpdate (e.g. inside child
   // component's mounted hook), which relies on vm._watcher being already defined
+  // 创建渲染 watcher    watcher顺序第三
   new Watcher(vm, updateComponent, noop, {
     before() {
       if (vm._isMounted && !vm._isDestroyed) {

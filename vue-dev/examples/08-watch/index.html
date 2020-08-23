@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>watcher</title>
+</head>
+
+<body>
+  <div id="app">
+    {{ reversedMessage }}
+    <hr>
+    {{ user.fullName }}
+  </div>
+
+  <script src="../../dist/vue.js"></script>
+  <script>
+    const vm = new Vue({
+      el: '#app',
+      data: {
+        message: 'Hello Vue',
+        user: {
+          firstName: '诸葛',
+          lastName: '亮',
+          fullName: ''
+        }
+      },
+      // 1. 计算属性 watcher
+      computed: {
+        reversedMessage: function () {
+          return this.message.split('').reverse().join('')
+        }
+      },
+      // 2. 用户 watcher (监听器)
+      watch: {
+        // 'user.firstName': function (newValue, oldValue) {
+        //   this.user.fullName = this.user.firstName + ' ' + this.user.lastName
+        // },
+        // 'user.lastName': function (newValue, oldValue) {
+        //   this.user.fullName = this.user.firstName + ' ' + this.user.lastName
+        // },
+        'user': {
+          handler: function (newValue, oldValue) {
+            this.user.fullName = this.user.firstName + ' ' + this.user.lastName
+          },
+          deep: true,     // 深度监听
+          immediate: true // 立即执行
+        }
+      }
+    })
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>watcher</title>
+</head>
+
+<body>
+    <div id="app">
+        {{ user.fullName }}
+    </div>
+
+    <script src="../../dist/vue.js"></script>
+    <script>
+        const vm = new Vue({
+            el: '#app',
+            data: {
+                msg: "hello word",
+                user: {
+                    firstName: '诸葛',
+                    lastName: '亮',
+                    fullName: ''
+                }
+            }
+        })
+
+        // expOrFn 是表达式
+        vm.$watch('msg', function (newVal, oldVal) {
+            console.log(newVal, oldVal)
+        })
+        vm.$watch('user.firstName', function (newVal, oldVal) {
+            console.log(newVal)
+        })
+        // expOrFn 是函数
+        vm.$watch(function () {
+            return this.a + this.b
+        }, function (newVal, oldVal) {
+            console.log(newVal)
+        })
+        // deep 是 true，消耗性能
+        vm.$watch('user', function (newVal, oldVal) {
+            // 此时的 newVal 是 user 对象
+            console.log(newVal === vm.user)
+        }, {
+            deep: true      // 深度监听
+        })
+        // immediate 是 true
+        vm.$watch('msg', function (newVal, oldVal) {
+            console.log(newVal)
+        }, {
+            immediate: true         // 立即执行
+        })
+    </script>
+</body>
+
+</html>

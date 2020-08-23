@@ -51,11 +51,13 @@ export function initState(vm: Component) {
   if (opts.props) initProps(vm, opts.props)
   if (opts.methods) initMethods(vm, opts.methods)
   if (opts.data) {
-    initData(vm)
+    initData(vm)   // 把 options的data注入到vue中，并把它转换成响应式
   } else {
     observe(vm._data = {}, true /* asRootData */)
   }
+  // 创建计算属性 watcher    watcher顺序第一
   if (opts.computed) initComputed(vm, opts.computed)
+  // 创建用户 watcher (监听器)  watcher顺序第二
   if (opts.watch && opts.watch !== nativeWatch) {
     initWatch(vm, opts.watch)
   }
@@ -111,6 +113,8 @@ function initProps(vm: Component, propsOptions: Object) {
 
 function initData(vm: Component) {
   let data = vm.$options.data
+  // 初始化 _data，组件中 data 是函数，调用函数返回结果
+  // 否则返回 data
   data = vm._data = typeof data === 'function'
     ? getData(data, vm)
     : data || {}
@@ -123,12 +127,16 @@ function initData(vm: Component) {
     )
   }
   // proxy data on instance
+  // 获取 data 中的所有属性
   const keys = Object.keys(data)
+  // 获取 props / methods 
   const props = vm.$options.props
   const methods = vm.$options.methods
   let i = keys.length
+  // 判断 data 上的成员是否和 props/methods 重命
   while (i--) {
     const key = keys[i]
+    // 如果重命在开发环境中发送一个警告
     if (process.env.NODE_ENV !== 'production') {
       if (methods && hasOwn(methods, key)) {
         warn(
@@ -144,10 +152,12 @@ function initData(vm: Component) {
         vm
       )
     } else if (!isReserved(key)) {
+      // 把 data 中的成员注入到 vue 实例
       proxy(vm, `_data`, key)
     }
   }
   // observe data
+  // 响应式处理
   observe(data, true /* asRootData */)
 }
 
@@ -288,8 +298,12 @@ function initMethods(vm: Component, methods: Object) {
 }
 
 function initWatch(vm: Component, watch: Object) {
+  // 遍历 options 的 watch 对象
   for (const key in watch) {
+    // 找到 watch 对象的所有属性对应的值
     const handler = watch[key]
+    // handler 是数组，会把我们当前监听的属性创建多个处理函数
+    // 也就是当这个属性发生变化的时候会触发多个回调函数
     if (Array.isArray(handler)) {
       for (let i = 0; i < handler.length; i++) {
         createWatcher(vm, key, handler[i])
@@ -306,13 +320,18 @@ function createWatcher(
   handler: any,
   options?: Object
 ) {
+  // 如果handler是原生对象 
+  // watch("age",{handler:()=>{},deep:true,immediate:true})
   if (isPlainObject(handler)) {
     options = handler
     handler = handler.handler
   }
+  // 如果handler是字符串 找到 methods 中对应的方法作为我们的处理函数
+  // watch("age",getAge)      这个getAge作为 methods 中的方法
   if (typeof handler === 'string') {
     handler = vm[handler]
   }
+  // 最后调用 $watch 方法实现监听
   return vm.$watch(expOrFn, handler, options)
 }
 
@@ -363,13 +382,16 @@ export function stateMixin(Vue: Class<Component>) {
     options.user = true
     // 创建用户 watcher 对象 
     const watcher = new Watcher(vm, expOrFn, cb, options)
+    // 判断 immediate 如果为 true
     if (options.immediate) {
       try {
+        // 立即执行一次 cb 回调，并且把当前值传入
         cb.call(vm, watcher.value)
       } catch (error) {
         handleError(error, vm, `callback for immediate watcher "${watcher.expression}"`)
       }
     }
+    // 返回取消监听的
     return function unwatchFn() {
       watcher.teardown()
     }
