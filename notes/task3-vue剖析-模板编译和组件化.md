@@ -1,15 +1,19 @@
 # 1. Vue 源码剖析-模板编译和组件化
 
 ## 1.1 模板编译
+
 - 模板编译的主要目的是将模板 (template) 转换为渲染函数 (render)
-``` js
+
+```js
 <div>
     <h1 @click="handler">title</h1>
     <p>some content</p>
 </div>
 ```
+
 - 渲染函数 render
-``` js
+
+```js
 render (h) {
     return h('div', [
         h('h1', { on: { click: this.handler} }, 'title'),
@@ -17,137 +21,149 @@ render (h) {
     ])
 }
 ```
+
 - 模板编译的作用
-    - Vue 2.x 使用 VNode 描述视图以及各种交互，用户自己编写 VNode 比较复杂
-    - 用户只需要编写类似 HTML 的代码 - Vue 模板，通过编译器将模板转换为返回 VNode 的render 函数
-    - .vue 文件会被 webpack 在构建的过程中转换成 render 函数
-        - webpack 本身是不支持把模板编译成 render 函数
-        - webpack 内部是通过 VNode 来进行操作的
+  - Vue 2.x 使用 VNode 描述视图以及各种交互，用户自己编写 VNode 比较复杂
+  - 用户只需要编写类似 HTML 的代码 - Vue 模板，通过编译器将模板转换为返回 VNode 的 render 函数
+  - .vue 文件会被 webpack 在构建的过程中转换成 render 函数
+    - webpack 本身是不支持把模板编译成 render 函数
+    - webpack 内部是通过 VNode 来进行操作的
 - 根据运行的时间，我们可以把编译的过程分为运行时编译和创建时(打包时)编译
-    - 运行时编译
-        - 前提： 是使用完整版的 Vue,因为完整版的 Vue，才带编译器，他在项目运行的过程中把模板编译成 render 函数，
-        - 缺点：Vue 体积大，并且运行特别慢
-    - 创建时编译
-        - Vue-cli 默认就是 运行版的 Vue, 不带编译器，体积小，因为他没有编辑器，所以需要创建时编译，也就是打包的时候 webpack 通过 VNode 编译成 render 函数
-        - 优点： 体积小，运行速度快
+  - 运行时编译
+    - 前提： 是使用完整版的 Vue,因为完整版的 Vue，才带编译器，他在项目运行的过程中把模板编译成 render 函数，
+    - 缺点：Vue 体积大，并且运行特别慢
+  - 创建时编译
+    - Vue-cli 默认就是 运行版的 Vue, 不带编译器，体积小，因为他没有编辑器，所以需要创建时编译，也就是打包的时候 webpack 通过 VNode 编译成 render 函数
+    - 优点： 体积小，运行速度快
 
 ### 1.1.1 体验模板编译的结果
+
 - 带编译器版本的 Vue.js 中，使用 template 或 el 的方式设置模板
-``` html
+
+```html
 <div id="app">
-    <h1>Vue<span>模板编译过程</span></h1>
-    <p>{{ msg }}</p>
-    <comp @myclick="handler"></comp>
-  </div>
-  <script src="../../dist/vue.js"></script>
-  <script>
-    Vue.component('comp', {
-      template: '<div>I am a comp</div>'
-    })
-    const vm = new Vue({
-      el: '#app',
-      data: {
-        msg: 'Hello compiler'
+  <h1>Vue<span>模板编译过程</span></h1>
+  <p>{{ msg }}</p>
+  <comp @myclick="handler"></comp>
+</div>
+<script src="../../dist/vue.js"></script>
+<script>
+  Vue.component("comp", {
+    template: "<div>I am a comp</div>",
+  });
+  const vm = new Vue({
+    el: "#app",
+    data: {
+      msg: "Hello compiler",
+    },
+    methods: {
+      handler() {
+        console.log("test");
       },
-      methods: {
-        handler () {
-          console.log('test')
-        }
-      }
-    })
-    console.log(vm.$options.render)
-  </script>
+    },
+  });
+  console.log(vm.$options.render);
+</script>
 ```
+
 - 编译后 render 输出的结果
-``` js
+
+```js
 (function anonymous() {
-    with (this) {
-        return _c(
-        "div",
-        { attrs: { id: "app" } },       // id属性
-         // children子节点
-        [
-            _m(0),      // 静态内容，也就是没有使用模板的html元素
-            _v(" "),            // 空白文本VNode
-            // _c children子节点
-            // _v 子节点
-            // _s 把 msg 转换成字符串
-            _c("p", [_v(_s(msg))]), 
-            _v(" "),     // 文本VNode
-            _c("comp", { on: { myclick: handler } }),
-        ],
-        1           // 1 就是把children拆平，如果children是二维数组，变成一维数组
-        );
-    }
+  with (this) {
+    return _c(
+      "div",
+      { attrs: { id: "app" } }, // id属性
+      // children子节点
+      [
+        _m(0), // 静态内容，也就是没有使用模板的html元素
+        _v(" "), // 空白文本VNode
+        // _c children子节点
+        // _v 子节点
+        // _s 把 msg 转换成字符串
+        _c("p", [_v(_s(msg))]),
+        _v(" "), // 文本VNode
+        _c("comp", { on: { myclick: handler } }),
+      ],
+      1 // 1 就是把children拆平，如果children是二维数组，变成一维数组
+    );
+  }
 });
 ```
-- _c 是 createElement() 方法，定义的位置 instance/render.js 中
-    - 其实就是创建VNode 对象的
-``` js
+
+- \_c 是 createElement() 方法，定义的位置 instance/render.js 中
+  - 其实就是创建 VNode 对象的
+
+```js
 // 对编译生成的 render 进行渲染的方法
-vm._c = (a, b, c, d) => createElement(vm, a, b, c, d, false)
+vm._c = (a, b, c, d) => createElement(vm, a, b, c, d, false);
 // normalization is always applied for the public version, used in
 // user-written render functions.
 // 对手写 render 函数进行渲染的方法
-vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
+vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true);
 ```
-- 相关的渲染函数(_开头的方法定义)，在 instance/render-helps/index.js 中
-``` js
+
+- 相关的渲染函数(\_开头的方法定义)，在 instance/render-helps/index.js 中
+
+```js
 // instance/render-helps/index.js
-target._v = createTextVNode
-target._m = renderStatic
+target._v = createTextVNode;
+target._m = renderStatic;
 // core/vdom/vnode.js       创建文本VNode
 export function createTextVNode(val: string | number) {
-  return new VNode(undefined, undefined, undefined, String(val))
+  return new VNode(undefined, undefined, undefined, String(val));
 }
 // 在 instance/render-helps/render-static.js
 export function renderStatic(
   index: number,
   isInFor: boolean
 ): VNode | Array<VNode> {
-  const cached = this._staticTrees || (this._staticTrees = [])
-  let tree = cached[index]
+  const cached = this._staticTrees || (this._staticTrees = []);
+  let tree = cached[index];
   // if has already-rendered static tree and not inside v-for,
   // we can reuse the same tree.
   if (tree && !isInFor) {
-    return tree
+    return tree;
   }
   // otherwise, render a fresh tree.
   tree = cached[index] = this.$options.staticRenderFns[index].call(
     this._renderProxy,
     null,
     this // for render fns generated for functional component templates
-  )
-  markStatic(tree, `__static__${index}`, false)
-  return tree
+  );
+  markStatic(tree, `__static__${index}`, false);
+  return tree;
 }
 ```
-- 把 template 转换成 render 的入口 src\platforms\web\entry-runtime-with-compiler.js
 
+- 把 template 转换成 render 的入口  src\platforms\web\entry-runtime-with-compiler.js
 
 ### 1.1.2 Vue Template Explorer
+
 - [vue-template-explor](https://template-explorer.vuejs.org/#%3Cdiv%20id%3D%22app%22%3E%0A%20%20%3Cselect%3E%0A%20%20%20%20%3Coption%3E%0A%20%20%20%20%20%20%7B%7B%20msg%20%20%7D%7D%0A%20%20%20%20%3C%2Foption%3E%0A%20%20%3C%2Fselect%3E%0A%20%20%3Cdiv%3E%0A%20%20%20%20hello%0A%20%20%3C%2Fdiv%3E%0A%3C%2Fdiv%3E)
-    - Vue 2.6 把模板编译成 render 函数的工具
+  - Vue 2.6 把模板编译成 render 函数的工具
 
 ![avatar](../images/task3/vue2.6模板编译成render.png)
 
 - [vue-next-template-explor](https://vue-next-template-explorer.netlify.app/#%7B%22src%22%3A%22%3Cdiv%20id%3D%5C%22app%5C%22%3E%5Cn%20%20%3Cselect%3E%5Cn%20%20%20%20%3Coption%3E%5Cn%20%20%20%20%20%20%7B%7B%20msg%20%20%7D%7D%5Cn%20%20%20%20%3C%2Foption%3E%5Cn%20%20%3C%2Fselect%3E%5Cn%20%20%3Cdiv%3E%5Cn%20%20%20%20hello%5Cn%20%20%3C%2Fdiv%3E%5Cn%3C%2Fdiv%3E%22%2C%22options%22%3A%7B%22mode%22%3A%22module%22%2C%22prefixIdentifiers%22%3Afalse%2C%22optimizeImports%22%3Afalse%2C%22hoistStatic%22%3Afalse%2C%22cacheHandlers%22%3Afalse%2C%22scopeId%22%3Anull%2C%22ssrCssVars%22%3A%22%7B%20color%20%7D%22%2C%22bindingMetadata%22%3A%7B%22TestComponent%22%3A%22setup%22%2C%22foo%22%3A%22setup%22%2C%22bar%22%3A%22props%22%7D%2C%22optimizeBindings%22%3Afalse%7D%7D)
-    - Vue 3.0 beta 把模板编译成 render 函数的工具
+  - Vue 3.0 beta 把模板编译成 render 函数的工具
 
 ![avatar](../images/task3/vue3模板编译成render.png)
 
-总结： 
+总结：
+
 - 在使用 vue2.6 的时候，文本内容尽量不要添加空白内容
 - 在 vue3 中没有这个问题，他已经去除了空白内容
 
+## 1.2 模板编译过程 \*\*\*
 
-
-## 1.2 模板编译过程   ***
 - 解析、优化、生成
 
 ### 1.2.1 编译的入口
+
 - src\platforms\web\entry-runtime-with-compiler.js
-``` js
+
+```js
 Vue.prototype.$mount = function (
     ……
     // 把 template 转换成 render 函数
@@ -163,279 +179,297 @@ Vue.prototype.$mount = function (
     ……
 )
 ```
+
 编译入口的代码执行过程
-- compileToFunctions将template编译成render函数和staticRenderFns                    src\platforms\web\entry-runtime-with-compiler.js
-- createCompiler(baseOptions/编译函数的options)方法返回compileToFunctions          src\platforms\web\compiler\index.js
-- createCompilerCreator(baseCompile/编译函数)就是调用下面的方法                     src\compiler\index.js               (****)
-    - baseCompile函数才是最终实现模板编译的功能         (****)
-    ``` js
-    function baseCompile(
-        template: string,
-        options: CompilerOptions
-    ): CompiledResult {
-        // 1.解析-parse: 把模板转换成 ast 抽象语法树
-        // 抽象语法树，用来以树性的方式描述代码结构
-        const ast = parse(template.trim(), options)
-        if (options.optimize !== false) {
-            // 2.优化-optimize： 优化抽象语法树
-            optimize(ast, options)
-        }
-        // 3.生成-generate: 把抽象语法树生成字符串形式的 js 代码
-        const code = generate(ast, options)
-        return {
-            ast,
-            // 渲染函数     
-            // 此时的render是字符串render函数，需要to Function转换成render函数
-            render: code.render,    
-            // 静态渲染函数，生成静态 VNode 树
-            staticRenderFns: code.staticRenderFns
-        }
+
+- compileToFunctions 将 template 编译成 render 函数和 staticRenderFns src\platforms\web\entry-runtime-with-compiler.js
+- createCompiler(baseOptions/编译函数的 options)方法返回 compileToFunctions src\platforms\web\compiler\index.js
+- createCompilerCreator(baseCompile/编译函数)就是调用下面的方法 src\compiler\index.js (\*\*\*\*)
+  - baseCompile 函数才是最终实现模板编译的功能 (\*\*\*\*)
+  ```js
+  function baseCompile(
+    template: string,
+    options: CompilerOptions
+  ): CompiledResult {
+    // 1.解析-parse: 把模板转换成 ast 抽象语法树
+    // 抽象语法树，用来以树性的方式描述代码结构
+    const ast = parse(template.trim(), options);
+    if (options.optimize !== false) {
+      // 2.优化-optimize： 优化抽象语法树
+      optimize(ast, options);
     }
-    ```
-- createCompilerCreator(baseCompile/编译函数)方法返回createCompiler                src\compiler\create-compiler.js
-    - 这个方法的作用就是合并用户传入的options和baseOptions(编译函数自带的options)，并且通过调用baseCompile传入template和合并的options返回一个对象
-    - compile                                                       最终返回的对象有render函数和staticRenderFns
-    - compileToFunctions: createCompileToFunctionFn(compile)        对compole对象缓存的功能
-- createCompileToFunctionFn(compile)方法返回compileToFunctions                    src\compiler\to-function.js
-    - 缓存并返回 res 对象(render, staticRenderFns方法)
+    // 3.生成-generate: 把抽象语法树生成字符串形式的 js 代码
+    const code = generate(ast, options);
+    return {
+      ast,
+      // 渲染函数
+      // 此时的render是字符串render函数，需要to Function转换成render函数
+      render: code.render,
+      // 静态渲染函数，生成静态 VNode 树
+      staticRenderFns: code.staticRenderFns,
+    };
+  }
+  ```
+- createCompilerCreator(baseCompile/编译函数)方法返回 createCompiler src\compiler\create-compiler.js
+  - 这个方法的作用就是合并用户传入的 options 和 baseOptions(编译函数自带的 options)，并且通过调用 baseCompile 传入 template 和合并的 options 返回一个对象
+  - compile 最终返回的对象有 render 函数和 staticRenderFns
+  - compileToFunctions: createCompileToFunctionFn(compile) 对 compole 对象缓存的功能
+- createCompileToFunctionFn(compile)方法返回 compileToFunctions src\compiler\to-function.js
+  - 缓存并返回 res 对象(render, staticRenderFns 方法)
 
 综上总结：
-- baseCompile函数才是最终实现模板编译的功能
-- createCompilerCreator函数只是合并vue的options和compile的options，并且通过调用baseCompile传入template和合并的options返回一个对象
-- 而createCompileToFunctionFn函数对baseCompile返回的对象做缓存优化功能
 
+- baseCompile 函数才是最终实现模板编译的功能
+- createCompilerCreator 函数只是合并 vue 的 options 和 compile 的 options，并且通过调用 baseCompile 传入 template 和合并的 options 返回一个对象
+- 而 createCompileToFunctionFn 函数对 baseCompile 返回的对象做缓存优化功能
 
-- 调试 compileToFunctions() 执行过程，生成渲染函数的过程
-    - compileToFunctions: src\compiler\to-function.js
-   ```js
-   // 把编译之后的结果返回
-    export function createCompileToFunctionFn(compile: Function): Function {
+* 调试  compileToFunctions() 执行过程，生成渲染函数的过程
+
+  - compileToFunctions: src\compiler\to-function.js
+
+  ```js
+  // 把编译之后的结果返回
+  export function createCompileToFunctionFn(compile: Function): Function {
     // 通过闭包缓存编译之后的结果
-    const cache = Object.create(null)
+    const cache = Object.create(null);
 
     return function compileToFunctions(
-        template: string,
-        options?: CompilerOptions,
-        vm?: Component
+      template: string,
+      options?: CompilerOptions,
+      vm?: Component
     ): CompiledFunctionResult {
-        // vue 中的options
-        options = extend({}, options)
-        const warn = options.warn || baseWarn
-        delete options.warn
+      // vue 中的options
+      options = extend({}, options);
+      const warn = options.warn || baseWarn;
+      delete options.warn;
 
-        /* istanbul ignore if */
-        if (process.env.NODE_ENV !== 'production') {
+      /* istanbul ignore if */
+      if (process.env.NODE_ENV !== "production") {
         // detect possible CSP restriction
         try {
-            new Function('return 1')
+          new Function("return 1");
         } catch (e) {
-            if (e.toString().match(/unsafe-eval|CSP/)) {
+          if (e.toString().match(/unsafe-eval|CSP/)) {
             warn(
-                'It seems you are using the standalone build of Vue.js in an ' +
-                'environment with Content Security Policy that prohibits unsafe-eval. ' +
-                'The template compiler cannot work in this environment. Consider ' +
-                'relaxing the policy to allow unsafe-eval or pre-compiling your ' +
-                'templates into render functions.'
-            )
-            }
+              "It seems you are using the standalone build of Vue.js in an " +
+                "environment with Content Security Policy that prohibits unsafe-eval. " +
+                "The template compiler cannot work in this environment. Consider " +
+                "relaxing the policy to allow unsafe-eval or pre-compiling your " +
+                "templates into render functions."
+            );
+          }
         }
-        }
+      }
 
-        // check cache
-        // 1. 读取缓存中的 CompiledFunctionResult 对象，如果有直接返回
-        const key = options.delimiters
+      // check cache
+      // 1. 读取缓存中的 CompiledFunctionResult 对象，如果有直接返回
+      const key = options.delimiters
         ? String(options.delimiters) + template
-        : template
-        if (cache[key]) {
-        return cache[key]
-        }
+        : template;
+      if (cache[key]) {
+        return cache[key];
+      }
 
-        // compile
-        // 2. 把模板编译为编译对象(render, staticRenderFns)，字符串形式的 js 代码
-        const compiled = compile(template, options)
+      // compile
+      // 2. 把模板编译为编译对象(render, staticRenderFns)，字符串形式的 js 代码
+      const compiled = compile(template, options);
 
-        // check compilation errors/tips
-        if (process.env.NODE_ENV !== 'production') {
+      // check compilation errors/tips
+      if (process.env.NODE_ENV !== "production") {
         if (compiled.errors && compiled.errors.length) {
-            if (options.outputSourceRange) {
-            compiled.errors.forEach(e => {
-                warn(
+          if (options.outputSourceRange) {
+            compiled.errors.forEach((e) => {
+              warn(
                 `Error compiling template:\n\n${e.msg}\n\n` +
-                generateCodeFrame(template, e.start, e.end),
+                  generateCodeFrame(template, e.start, e.end),
                 vm
-                )
-            })
-            } else {
+              );
+            });
+          } else {
             warn(
-                `Error compiling template:\n\n${template}\n\n` +
-                compiled.errors.map(e => `- ${e}`).join('\n') + '\n',
-                vm
-            )
-            }
+              `Error compiling template:\n\n${template}\n\n` +
+                compiled.errors.map((e) => `- ${e}`).join("\n") +
+                "\n",
+              vm
+            );
+          }
         }
         if (compiled.tips && compiled.tips.length) {
-            if (options.outputSourceRange) {
-            compiled.tips.forEach(e => tip(e.msg, vm))
-            } else {
-            compiled.tips.forEach(msg => tip(msg, vm))
-            }
+          if (options.outputSourceRange) {
+            compiled.tips.forEach((e) => tip(e.msg, vm));
+          } else {
+            compiled.tips.forEach((msg) => tip(msg, vm));
+          }
         }
-        }
+      }
 
-        // turn code into functions
-        const res = {}
-        const fnGenErrors = []
-        // 3. 把字符串形式的 js 代码转换成 js 方法
-        res.render = createFunction(compiled.render, fnGenErrors)
-        res.staticRenderFns = compiled.staticRenderFns.map(code => {
-        return createFunction(code, fnGenErrors)
-        })
+      // turn code into functions
+      const res = {};
+      const fnGenErrors = [];
+      // 3. 把字符串形式的 js 代码转换成 js 方法
+      res.render = createFunction(compiled.render, fnGenErrors);
+      res.staticRenderFns = compiled.staticRenderFns.map((code) => {
+        return createFunction(code, fnGenErrors);
+      });
 
-        // check function generation errors.
-        // this should only happen if there is a bug in the compiler itself.
-        // mostly for codegen development use
-        /* istanbul ignore if */
-        if (process.env.NODE_ENV !== 'production') {
-        if ((!compiled.errors || !compiled.errors.length) && fnGenErrors.length) {
-            warn(
+      // check function generation errors.
+      // this should only happen if there is a bug in the compiler itself.
+      // mostly for codegen development use
+      /* istanbul ignore if */
+      if (process.env.NODE_ENV !== "production") {
+        if (
+          (!compiled.errors || !compiled.errors.length) &&
+          fnGenErrors.length
+        ) {
+          warn(
             `Failed to generate render function:\n\n` +
-            fnGenErrors.map(({ err, code }) => `${err.toString()} in\n\n${code}\n`).join('\n'),
+              fnGenErrors
+                .map(({ err, code }) => `${err.toString()} in\n\n${code}\n`)
+                .join("\n"),
             vm
-            )
+          );
         }
-        }
-        // 4. 缓存并返回 res 对象(render, staticRenderFns方法)
-        return (cache[key] = res)
-    }
-    }
-
-   ```
-    
-    - complie(template, options)：src\compiler\create-compiler.js
-    ``` js
-    function compile(
-      template: string,
-      options?: CompilerOptions
-    ): CompiledResult {
-      // 合并options和compiler传过来的options
-      const finalOptions = Object.create(baseOptions)
-      // 存储编译过程的错误和信息
-      const errors = []
-      const tips = []
-
-      let warn = (msg, range, tip) => {
-        (tip ? tips : errors).push(msg)
       }
+      // 4. 缓存并返回 res 对象(render, staticRenderFns方法)
+      return (cache[key] = res);
+    };
+  }
+  ```
 
-      if (options) {
-        if (process.env.NODE_ENV !== 'production' && options.outputSourceRange) {
-          // $flow-disable-line
-          const leadingSpaceLength = template.match(/^\s*/)[0].length
+  - complie(template, options)：src\compiler\create-compiler.js
 
-          warn = (msg, range, tip) => {
-            const data: WarningMessage = { msg }
-            if (range) {
-              if (range.start != null) {
-                data.start = range.start + leadingSpaceLength
-              }
-              if (range.end != null) {
-                data.end = range.end + leadingSpaceLength
-              }
+  ```js
+  function compile(
+    template: string,
+    options?: CompilerOptions
+  ): CompiledResult {
+    // 合并options和compiler传过来的options
+    const finalOptions = Object.create(baseOptions);
+    // 存储编译过程的错误和信息
+    const errors = [];
+    const tips = [];
+
+    let warn = (msg, range, tip) => {
+      (tip ? tips : errors).push(msg);
+    };
+
+    if (options) {
+      if (process.env.NODE_ENV !== "production" && options.outputSourceRange) {
+        // $flow-disable-line
+        const leadingSpaceLength = template.match(/^\s*/)[0].length;
+
+        warn = (msg, range, tip) => {
+          const data: WarningMessage = { msg };
+          if (range) {
+            if (range.start != null) {
+              data.start = range.start + leadingSpaceLength;
             }
-            (tip ? tips : errors).push(data)
+            if (range.end != null) {
+              data.end = range.end + leadingSpaceLength;
+            }
           }
-        }
-        // merge custom modules
-        if (options.modules) {
-          finalOptions.modules =
-            (baseOptions.modules || []).concat(options.modules)
-        }
-        // merge custom directives
-        if (options.directives) {
-          finalOptions.directives = extend(
-            Object.create(baseOptions.directives || null),
-            options.directives
-          )
-        }
-        // copy other options
-        for (const key in options) {
-          if (key !== 'modules' && key !== 'directives') {
-            finalOptions[key] = options[key]
-          }
+          (tip ? tips : errors).push(data);
+        };
+      }
+      // merge custom modules
+      if (options.modules) {
+        finalOptions.modules = (baseOptions.modules || []).concat(
+          options.modules
+        );
+      }
+      // merge custom directives
+      if (options.directives) {
+        finalOptions.directives = extend(
+          Object.create(baseOptions.directives || null),
+          options.directives
+        );
+      }
+      // copy other options
+      for (const key in options) {
+        if (key !== "modules" && key !== "directives") {
+          finalOptions[key] = options[key];
         }
       }
-
-      finalOptions.warn = warn
-      // 模板编译的核心函数
-      const compiled = baseCompile(template.trim(), finalOptions)
-      if (process.env.NODE_ENV !== 'production') {
-        detectErrors(compiled.ast, warn)
-      }
-      compiled.errors = errors
-      compiled.tips = tips
-      return compiled
     }
-    ```
 
-    - baseCompile(template.trim(), finalOptions)：src\compiler\index.js
+    finalOptions.warn = warn;
+    // 模板编译的核心函数
+    const compiled = baseCompile(template.trim(), finalOptions);
+    if (process.env.NODE_ENV !== "production") {
+      detectErrors(compiled.ast, warn);
+    }
+    compiled.errors = errors;
+    compiled.tips = tips;
+    return compiled;
+  }
+  ```
+
+  - baseCompile(template.trim(), finalOptions)：src\compiler\index.js
 
 ![avatar](../images/task3/编译模板入口.png)
 
-### 1.2.2 baseCompile 模板编译核心   (****)
-src\compiler\index.js              
-``` js
+### 1.2.2 baseCompile 模板编译核心 (\*\*\*\*)
+
+src\compiler\index.js
+
+```js
 function baseCompile(
-    template: string,
-    options: CompilerOptions
+  template: string,
+  options: CompilerOptions
 ): CompiledResult {
-    // 1.解析-parse: 把模板转换成 ast 抽象语法树
-    // 抽象语法树，用来以树性的方式描述代码结构
-    const ast = parse(template.trim(), options)
-    if (options.optimize !== false) {
-        // 2.优化-optimize： 优化抽象语法树
-        optimize(ast, options)
-    }
-    // 3.生成-generate: 把抽象语法树生成字符串形式的 js 代码
-    const code = generate(ast, options)
-    return {
-        ast,
-        // 渲染函数     
-        // 此时的render是字符串render函数，需要to Function转换成render函数
-        render: code.render,
-        // 静态渲染函数，生成静态 VNode 树
-        staticRenderFns: code.staticRenderFns
-    }
+  // 1.解析-parse: 把模板转换成 ast 抽象语法树
+  // 抽象语法树，用来以树性的方式描述代码结构
+  const ast = parse(template.trim(), options);
+  if (options.optimize !== false) {
+    // 2.优化-optimize： 优化抽象语法树
+    optimize(ast, options);
+  }
+  // 3.生成-generate: 把抽象语法树生成字符串形式的 js 代码
+  const code = generate(ast, options);
+  return {
+    ast,
+    // 渲染函数
+    // 此时的render是字符串render函数，需要to Function转换成render函数
+    render: code.render,
+    // 静态渲染函数，生成静态 VNode 树
+    staticRenderFns: code.staticRenderFns,
+  };
 }
 ```
 
 ### 1.2.2.1 解析 - parse
+
 什么是抽象语法树(ast)
-- 抽象语法树简称AST(Abstract Syntax Tree)
+
+- 抽象语法树简称 AST(Abstract Syntax Tree)
 - 使用对象的形式描述树性的代码结构
 - 此处的抽象语法树是用来描述树形结构的 HTML 字符串
-为什么要使用抽象语法树
-- 模板字符串转换成AST后，可以通过 AST 对模板做优化处理
+  为什么要使用抽象语法树
+- 模板字符串转换成 AST 后，可以通过 AST 对模板做优化处理
 - 标记模板中的静态内容，在 patch 的时候直接跳过静态内容
 - 在 patch 的过程中静态内容不需要对比和重新渲染
 
 - 解析器将模板解析为抽象语树 AST，只有将模板解析成 AST 后，才能基于它做优化或者生成代码字符串。
 - src\compiler\index.js
-``` js
-const ast = parse(template.trim(), options)
+
+```js
+const ast = parse(template.trim(), options);
 //src\compiler\parser\index.js
-parse()
+parse();
 ```
+
 - 查看得到的 AST tree
-[astexplor](https://astexplorer.net/#\gist\30f2bd28c9bbe0d37c2408e87cabdfcc\1cd0d49beed22d3fc8e2ade0177bb22bbe4b907c)
+  [astexplor](https://astexplorer.net/#\gist\30f2bd28c9bbe0d37c2408e87cabdfcc\1cd0d49beed22d3fc8e2ade0177bb22bbe4b907c)
 - parse 源码
-    - 解析 options
-    - 对模板解析 parseHTML函数
-        - start 解析开始标签时执行
-        - end   解析结束标签时执行
-        - chars 解析文本内容执行
-        - comment   注释标签执行
-    - 返回root变量，就是解析后的ast对象
-``` js
+  - 解析 options
+  - 对模板解析 parseHTML 函数
+    - start 解析开始标签时执行
+    - end 解析结束标签时执行
+    - chars 解析文本内容执行
+    - comment 注释标签执行
+  - 返回 root 变量，就是解析后的 ast 对象
+
+```js
 // src\compiler\parser\index.js
 export function parse(
   template: string,
@@ -466,20 +500,21 @@ export function parse(
         comment(text: string, start, end) {...}
     }
     // 3. 返回root变量，就是解析后的ast对象
-    return root 
+    return root
 }
 ```
 
 - 结构化指令的处理
-    - v-if 最终生成单元表达式
-``` js
+  - v-if 最终生成单元表达式
+
+```js
 // src\compiler\parser\index.js
 // structural directives
 // 结构化的指令
 // v-for
-processFor(element)
-processIf(element)
-processOnce(element)
+processFor(element);
+processIf(element);
+processOnce(element);
 // src\compiler\codegen\index.js
 export function genIf(
   el: any,
@@ -487,13 +522,15 @@ export function genIf(
   altGen?: Function,
   altEmpty?: string
 ): string {
-  el.ifProcessed = true // avoid recursion
-  return genIfConditions(el.ifConditions.slice(), state, altGen, altEmpty)
+  el.ifProcessed = true; // avoid recursion
+  return genIfConditions(el.ifConditions.slice(), state, altGen, altEmpty);
 }
 // 最终调用 genIfConditions 生成三元表达式
 ```
+
 - v-if 最终编译的结果
-``` js
+
+```js
 ƒ anonymous(
 ) {
   with (this) {
@@ -506,8 +543,10 @@ export function genIf(
   }
 }
 ```
-> v-if/v-for 结构化指令只能在编译阶段处理，如果我们要在 render 函数处理条件或循环只能使用js 中的 if 和 for
-``` js
+
+> v-if/v-for 结构化指令只能在编译阶段处理，如果我们要在 render 函数处理条件或循环只能使用 js 中的 if 和 for
+
+```js
 Vue.component('comp', {
   data: () {
     return {
@@ -524,67 +563,70 @@ Vue.component('comp', {
 ```
 
 #### 1.2.2.2 优化 - optimize
+
 - 优化抽象语法树，检测子节点中是否是纯静态节点
 - 一旦检测到纯静态节点，例如
-hello整体是静态节点
+  hello 整体是静态节点
 - 永远不会更改的节点
-    - 提升为常量，重新渲染的时候不在重新创建节点
-    - 在 patch 的时候直接跳过静态子树
-``` js
+  - 提升为常量，重新渲染的时候不在重新创建节点
+  - 在 patch 的时候直接跳过静态子树
+
+```js
 // src\compiler\index.js
 if (options.optimize !== false) {
-    optimize(ast, options)
-}   
+  optimize(ast, options);
+}
 // src\compiler\optimizer.js
 // 优化的是静态节点(永远不会更改的节点)
 // 提升为常量，重新渲染的时候不在重新创建节点
 // 在 patch 的时候直接跳过静态子树
 export function optimize(root: ?ASTElement, options: CompilerOptions) {
   // 没有传递ast直接返回
-  if (!root) return
-  isStaticKey = genStaticKeysCached(options.staticKeys || '')
-  isPlatformReservedTag = options.isReservedTag || no
+  if (!root) return;
+  isStaticKey = genStaticKeysCached(options.staticKeys || "");
+  isPlatformReservedTag = options.isReservedTag || no;
   // first pass: mark all non-static nodes.
   // 1. 标记静态节点
-  markStatic(root)
+  markStatic(root);
   // second pass: mark static roots.
   // 2. 标记静态根节点
-  markStaticRoots(root, false)
+  markStaticRoots(root, false);
 }
 ```
+
 #### 1.2.2.3 生成 - generate
-``` js
+
+```js
 // src\compiler\index.js
-const code = generate(ast, options)
+const code = generate(ast, options);
 // src\compiler\codegen\index.js
 export function generate(
   ast: ASTElement | void,
   options: CompilerOptions
 ): CodegenResult {
-  const state = new CodegenState(options)
-  const code = ast ? genElement(ast, state) : '_c("div")'
+  const state = new CodegenState(options);
+  const code = ast ? genElement(ast, state) : '_c("div")';
   return {
     render: `with(this){return ${code}}`,
-    staticRenderFns: state.staticRenderFns
-  }
+    staticRenderFns: state.staticRenderFns,
+  };
 }
 // 把字符串转换成函数
 // src\compiler\to-function.js
-function createFunction (code, errors) {
-    try {
-        return new Function(code)
-    } catch (err) {
-        errors.push({ err, code })
-        return noop
-    }
+function createFunction(code, errors) {
+  try {
+    return new Function(code);
+  } catch (err) {
+    errors.push({ err, code });
+    return noop;
+  }
 }
 ```
 
-
-
-
 ### 1.2.3 总结：模板编译过程
+
 模板编译
+
 - 是把模板字符串首先转换成 ast 对象
 - 然后优化 ast 对象，优化的过程就是标记静态节点
 - 然后把优化好的代码转换成字符串形式的 js 代码
@@ -593,3 +635,167 @@ function createFunction (code, errors) {
 - 模板编译就是把模板字符串转换成 render 函数
 
 ## 1.3 组件化机制
+
+- 组件化可以让我们方便的把页面拆分成多个可重用的组件
+- 组件是独立的，系统内可重用，组件之间可以嵌套
+- 有了组件可以像搭积木一样开发网页
+- 下面我们将从源码的角度来分析 Vue 组件内部如何工作
+  - 组件实例的创建过程是从上而下
+  - 组件实例的挂载过程是从下而上
+
+### 1.3.1 组件声明
+
+- 复习全局组件的定义方式
+
+```js
+Vue.component("comp", { template: "<h1>hello</h1>" });
+```
+
+- Vue.component() 入口
+  - 创建组件的构造函数，挂载到 Vue 实例的 vm.options.component.componentName = Ctor
+
+```js
+// src\core\global-api\index.js
+// 注册 Vue.directive()、 Vue.component()、Vue.filter()
+initAssetRegisters(Vue)
+// src\core\global-api\assets.js
+if (type === 'component' && isPlainObject(definition)) {
+    definition.name = definition.name || id
+    definition = this.options._base.extend(definition)
+}
+……
+// 全局注册，存储资源并赋值
+// this.options['components']['comp'] = Ctor
+this.options[type + 's'][id] = definition
+// src\core\global-api\index.js
+// this is used to identify the "base" constructor to extend all plain- object
+// components with in Weex's multi-instance scenarios.
+Vue.options._base = Vue
+// src\core\global-api\extend.js
+Vue.extend()
+```
+
+- 组件构造函数的创建
+
+```js
+const Sub = function VueComponent(options) {
+  this._init(options);
+};
+Sub.prototype = Object.create(Super.prototype);
+Sub.prototype.constructor = Sub;
+Sub.cid = cid++;
+Sub.options = mergeOptions(Super.options, extendOptions);
+Sub["super"] = Super;
+// For props and computed properties, we define the proxy getters on
+// the Vue instances at extension time, on the extended prototype. This
+// avoids Object.defineProperty calls for each instance created.
+if (Sub.options.props) {
+  initProps(Sub);
+}
+if (Sub.options.computed) {
+  initComputed(Sub);
+}
+// allow further extension/mixin/plugin usage
+Sub.extend = Super.extend;
+Sub.mixin = Super.mixin;
+Sub.use = Super.use;
+// create asset registers, so extended classes
+// can have their private assets too.
+ASSET_TYPES.forEach(function (type) {
+  Sub[type] = Super[type];
+});
+// enable recursive self-lookup
+if (name) {
+  Sub.options.components[name] = Sub;
+}
+```
+
+- 调试 Vue.component() 调用的过程
+
+```html
+<div id="app"></div>
+<script src="../../dist/vue.js"></script>
+<script>
+  const Comp = Vue.component('comp', { template: '<h2>I am a comp</h2>' })const vm = new Vue({ el: '#app', render (h) { return h(Comp) } })
+</script>
+```
+
+### 1.3.2 组件创建和挂载
+
+组件 VNode 的创建过程
+
+- 创建根组件，首次 \_render() 时，会得到整棵树的 VNode 结构
+- 整体流程：new Vue() --> \$mount() --> vm.\_render() --> createElement() --> createComponent()
+- 创建组件的 VNode，初始化组件的 hook 钩子函数
+
+```js
+```
+
+- 调试执行过程
+
+### 1.3.3 组件实例的创建和挂载过程
+
+- Vue.\_update() --> patch() --> createElm() --> createComponent()
+
+```js
+// src\core\vdom\patch.js
+// 1. 创建组件实例，挂载到真实 DOM
+function createComponent(vnode, insertedVnodeQueue, parentElm, refElm) {
+  let i = vnode.data;
+  if (isDef(i)) {
+    const isReactivated = isDef(vnode.componentInstance) && i.keepAlive;
+    if (isDef((i = i.hook)) && isDef((i = i.init))) {
+      // 调用 init() 方法，创建和挂载组件实例
+      // init() 的过程中创建好了组件的真实 DOM,挂载到了 vnode.elm 上
+      i(vnode, false /* hydrating */);
+    }
+    // after calling the init hook, if the vnode is a child component
+    // it should've created a child instance and mounted it. the child
+    // component also has set the placeholder vnode's elm.
+    // in that case we can just return the element and be done.
+    if (isDef(vnode.componentInstance)) {
+      // 调用钩子函数（VNode的钩子函数初始化属性/事件/样式等，组件的钩子函数）
+      initComponent(vnode, insertedVnodeQueue);
+      // 把组件对应的 DOM 插入到父元素中
+      insert(parentElm, vnode.elm, refElm);
+      if (isTrue(isReactivated)) {
+        reactivateComponent(vnode, insertedVnodeQueue, parentElm, refElm);
+      }
+      return true;
+    }
+  }
+}
+// 2. 调用钩子函数，设置局部作用于样式
+function initComponent(vnode, insertedVnodeQueue) {
+  if (isDef(vnode.data.pendingInsert)) {
+    insertedVnodeQueue.push.apply(insertedVnodeQueue, vnode.data.pendingInsert);
+    vnode.data.pendingInsert = null;
+  }
+  vnode.elm = vnode.componentInstance.$el;
+  if (isPatchable(vnode)) {
+    // 调用钩子函数
+    invokeCreateHooks(vnode, insertedVnodeQueue);
+    // 设置局部作用于样式
+    setScope(vnode);
+  } else {
+    // empty component root.
+    // skip all element-related modules except for ref (#3455) registerRef(vnode)
+    // make sure to invoke the insert hook
+    insertedVnodeQueue.push(vnode);
+  }
+}
+// 3. 调用钩子函数
+function invokeCreateHooks(vnode, insertedVnodeQueue) {
+  // 调用 VNode 的钩子函数，初始化属性/样式/事件等
+  for (let i = 0; i < cbs.create.length; ++i) {
+    cbs.create[i](emptyNode, vnode);
+  }
+  i = vnode.data.hook;
+  // Reuse variable
+  // 调用组件的钩子函数
+  if (isDef(i)) {
+    if (isDef(i.create)) i.create(emptyNode, vnode);
+    if (isDef(i.insert)) insertedVnodeQueue.push(vnode);
+  }
+}
+```
